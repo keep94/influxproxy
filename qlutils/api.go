@@ -2,6 +2,7 @@ package qlutils
 
 import (
 	"errors"
+	"github.com/influxdata/influxdb/client/v2"
 	"github.com/influxdata/influxdb/influxql"
 	"time"
 )
@@ -31,4 +32,29 @@ func QueryTimeRange(
 func QuerySetTimeRange(
 	query *influxql.Query, min, max time.Time) (*influxql.Query, error) {
 	return querySetTimeRange(query, min, max)
+}
+
+// MergeResponses merges responses from multiple servers into a single
+// response.
+// MergeResponses expects the same query to be sent to all servers except
+// for different time ranges.
+// An error in any respone means an error in the merged response.
+//
+// The returned response will contain time series with values sorted by time
+// in increasing order even if the responses merged had times in
+// decreasing order.
+//
+// If the returned responses containing multiple series, they will be sorted
+// first by name and then by the tags. When sorting tags, MergeResponses
+// first places the tag keys of the time series to be sorted in ascending
+// order. To compare two sets of tags, MergeResponses first compares the
+// first pair of tag keys. If they match, MergeResponses uses the values of
+// those first keys to break the tie. If those match, MergeResponses uses
+// the second pair of tag keys to break the tie. If those match,
+// MergeResponses uses the values of the second keys to brak the tie etc.
+//
+// MergeResponse includes all messages from the responses being merged in
+// the merged response.
+func MergeResponses(responses ...*client.Response) (*client.Response, error) {
+	return mergeResponses(responses)
 }
