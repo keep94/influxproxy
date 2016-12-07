@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/Symantec/influxproxy/config"
 	"github.com/Symantec/influxproxy/qlutils"
 	"github.com/Symantec/scotty/lib/yamlutil"
@@ -8,6 +9,7 @@ import (
 	"github.com/influxdata/influxdb/influxql"
 	"io"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -96,6 +98,16 @@ func (e *executerType) SetupWithStream(r io.Reader) error {
 		newInstances[i] = instance{
 			Cl:       cl,
 			Duration: cluster.Instances[i].Duration,
+		}
+		_, version, err := cl.Ping(0)
+		if err != nil {
+			return err
+		}
+		if !strings.HasPrefix(version, "0.13") {
+			return fmt.Errorf(
+				"At '%s', found infux version '%s', expect 0.13.x",
+				cluster.Instances[i].HostAndPort,
+				version)
 		}
 	}
 	sort.Sort(newInstances)

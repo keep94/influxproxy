@@ -81,8 +81,12 @@ func main() {
 						Results: make([]seriesListType, len(resp.Results)),
 					}
 					for i := range results.Results {
+						theSeries := resp.Results[i].Series
+						if theSeries == nil {
+							theSeries = []models.Row{}
+						}
 						results.Results[i] = seriesListType{
-							Series: resp.Results[i].Series,
+							Series: theSeries,
 						}
 					}
 					return results, nil
