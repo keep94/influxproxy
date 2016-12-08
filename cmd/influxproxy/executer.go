@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"github.com/Symantec/influxproxy/config"
 	"github.com/Symantec/influxproxy/qlutils"
@@ -12,6 +13,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+)
+
+var (
+	errNoBackends = errors.New("No backends available to serve query. Check the configuration file.")
 )
 
 // Single influx instance
@@ -120,6 +125,15 @@ func (e *executerType) Query(queryStr, database, epoch string) (
 	*client.Response, error) {
 	now := time.Now()
 	query, err := qlutils.NewQuery(queryStr, now)
+	if err == qlutils.ErrNonSelectStatement {
+		// Just send to the influx with biggest duration if there is one.
+		fetchedInstances := e.get()
+		if len(fetchedInstances) > 0 {
+			return fetchedInstances[0].Cl.Query(
+				client.NewQuery(queryStr, database, epoch))
+		}
+		return nil, errNoBackends
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -127,6 +141,10 @@ func (e *executerType) Query(queryStr, database, epoch string) (
 	querySplits, err := fetchedInstances.SplitQuery(query, now)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(querySplits) == 0 {
+		return nil, errNoBackends
 	}
 
 	// These are placeholders for the responses from each influx db instance
