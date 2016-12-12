@@ -15,6 +15,12 @@ func newPoint(x int64) []interface{} {
 }
 
 func TestMergeMessages(t *testing.T) {
+	Convey("Merging no responses yields zero reponse", t, func() {
+		resp, err := qlutils.MergeResponses()
+		So(*resp, ShouldBeZeroValue)
+		So(err, ShouldBeNil)
+	})
+
 	Convey("Given responses with different messages", t, func() {
 		message1 := &client.Message{Level: "1", Text: "one"}
 		message2 := &client.Message{Level: "2", Text: "two"}

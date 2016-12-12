@@ -8,7 +8,7 @@ import (
 )
 
 func TestQuery(t *testing.T) {
-	now := time.Date(2016, 11, 30, 16, 1, 0, 0, time.Local)
+	now := time.Date(2016, 12, 1, 0, 1, 0, 0, time.UTC)
 
 	Convey("With no time range query", t, func() {
 
@@ -52,6 +52,33 @@ SELECT mean(value) FROM bar WHERE time >= '2016-11-30T14:01:00Z' AND time < '201
 			So(err, ShouldEqual, qlutils.ErrNonSelectStatement)
 		})
 
+	})
+
+	Convey("With query having lower bound time range only", t, func() {
+		ql := "select mean(value) from foo where time >= now() - 13h"
+
+		query, err := qlutils.NewQuery(ql, now)
+		So(err, ShouldBeNil)
+		origQueryString := query.String()
+
+		Convey("Early Time range should produce nil query", func() {
+			newQuery, err := qlutils.QuerySetTimeRange(
+				query, now.Add(-15*time.Hour), now.Add(-13*time.Hour))
+			So(err, ShouldBeNil)
+			So(newQuery, ShouldBeNil)
+		})
+
+		Convey("more recent start time should override lower bound", func() {
+			newQuery, err := qlutils.QuerySetTimeRange(
+				query, now.Add(-12*time.Hour), now)
+			So(err, ShouldBeNil)
+			So(newQuery.String(),
+				ShouldEqual,
+				`SELECT mean(value) FROM foo WHERE time >= '2016-11-30T12:01:00Z' AND time < '2016-12-01T00:01:00Z'`,
+			)
+		})
+		// Original query must remain unchanged
+		So(query.String(), ShouldEqual, origQueryString)
 	})
 
 	Convey("With query having overlapping time ranges", t, func() {

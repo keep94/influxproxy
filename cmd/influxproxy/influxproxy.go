@@ -2,13 +2,17 @@ package main
 
 import (
 	"flag"
+	"github.com/Symantec/Dominator/lib/fsutil"
 	"github.com/Symantec/scotty/lib/apiutil"
-	"github.com/influxdata/influxdb/client/v2"
+	//	"github.com/Symantec/scotty/lib/apiutil"
+	//	"github.com/influxdata/influxdb/client/v2"
 	"github.com/influxdata/influxdb/models"
 	"github.com/influxdata/influxdb/uuid"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"time"
 )
 
 func setHeader(w http.ResponseWriter, r *http.Request, key, value string) {
@@ -34,23 +38,39 @@ type resultListType struct {
 }
 
 func main() {
-	backendAddr := flag.String("backendAddr", "", "backend address")
+	fConfigFile := flag.String("config", "", "config file")
 	flag.Parse()
-	cl, err := client.NewHTTPClient(
-		client.HTTPConfig{
-			Addr: *backendAddr,
-		})
-	if err != nil {
-		log.Fatal(err)
+	executer := newExecuter()
+	logger := log.New(os.Stderr, "", log.LstdFlags)
+	changeCh := fsutil.WatchFile(*fConfigFile, logger)
+	// We want to be sure we have something valid in the config file
+	// initially.
+	select {
+	case readCloser := <-changeCh:
+		if err := executer.SetupWithStream(readCloser); err != nil {
+			logger.Fatal(err)
+		}
+		readCloser.Close()
+	case <-time.After(time.Second):
+		logger.Fatal("No config file")
 	}
+	go func() {
+		for readCloser := range changeCh {
+			if err := executer.SetupWithStream(readCloser); err != nil {
+				logger.Println(err)
+			}
+			readCloser.Close()
+		}
+	}()
 	http.Handle(
 		"/query",
 		uuidHandler(
 			apiutil.NewHandler(
 				func(req url.Values) (interface{}, error) {
-					resp, err := cl.Query(
-						client.NewQuery(
-							req.Get("q"), req.Get("db"), req.Get("epoch")))
+					resp, err := executer.Query(
+						req.Get("q"),
+						req.Get("db"),
+						req.Get("epoch"))
 					if err == nil {
 						err = resp.Error()
 					}
@@ -61,14 +81,21 @@ func main() {
 						Results: make([]seriesListType, len(resp.Results)),
 					}
 					for i := range results.Results {
+						theSeries := resp.Results[i].Series
+						if theSeries == nil {
+							theSeries = []models.Row{}
+						}
 						results.Results[i] = seriesListType{
-							Series: resp.Results[i].Series,
+							Series: theSeries,
 						}
 					}
 					return results, nil
+
 				},
 				nil,
-			)))
+			),
+		),
+	)
 	if err := http.ListenAndServe(":8086", nil); err != nil {
 		log.Fatal(err)
 	}
